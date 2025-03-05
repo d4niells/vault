@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"io"
 	"log"
 	"net/http"
@@ -9,6 +10,11 @@ import (
 
 	"github.com/rabbitmq/amqp091-go"
 )
+
+type Payload struct {
+	Filename string `json:"filename"`
+	Chunk    []byte
+}
 
 func publish(ch *amqp091.Channel, body []byte) error {
 	queue, err := ch.QueueDeclare("encrypt_chunks", true, false, false, false, nil)
@@ -44,7 +50,7 @@ func main() {
 	r := http.NewServeMux()
 
 	r.HandleFunc("POST /upload", func(w http.ResponseWriter, r *http.Request) {
-		f, _, err := r.FormFile("file")
+		f, fh, err := r.FormFile("file")
 		if err != nil {
 			http.Error(w, "missing file on body request", http.StatusBadRequest)
 		}
@@ -62,9 +68,16 @@ func main() {
 				break
 			}
 
-			chunk := buf[:n]
+			msg, err := json.Marshal(&Payload{
+				Filename: fh.Filename,
+				Chunk:    buf[:n],
+			})
+			if err != nil {
+				log.Printf("couldn't marshal the message payload: %s", err)
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+			}
 
-			err = publish(ch, chunk)
+			err = publish(ch, msg)
 			if err != nil {
 				log.Printf("couldn't publish the chunk's message: %s", err)
 				http.Error(w, "couldn't read the file", http.StatusInternalServerError)
