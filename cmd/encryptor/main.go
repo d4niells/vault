@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/rabbitmq/amqp091-go"
+	"github.com/d4niells/vault/internal/messaging"
 )
 
 type File struct {
@@ -15,19 +15,15 @@ type File struct {
 }
 
 func main() {
-	conn, err := amqp091.Dial("amqp://guest:guest@localhost:5672/")
+	rabbitMQ, err := messaging.NewRabbitMQ("amqp://guest:guest@localhost:5672/")
 	if err != nil {
-		log.Fatalf("couldn't open a new connection: %s", err)
+		log.Printf("couldn't open RabbitMQ connection: %s", err)
 	}
+	defer rabbitMQ.Close()
 
-	ch, err := conn.Channel()
+	msgs, err := rabbitMQ.Ch.Consume("encrypt_chunks", "encryptor", true, false, false, false, nil)
 	if err != nil {
-		log.Fatalf("couldn't create a unique channel: %s", err)
-	}
-
-	msgs, err := ch.Consume("encrypt_chunks", "encryptor", true, false, false, false, nil)
-	if err != nil {
-		log.Fatalf("couldn't start consuming encrypt_chunks queue: %s", err)
+		log.Fatalf("couldn't consume messages: %s", err)
 	}
 
 	var file File

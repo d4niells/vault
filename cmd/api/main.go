@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/d4niells/vault/internal/messaging"
 	"github.com/rabbitmq/amqp091-go"
 )
 
@@ -35,20 +36,13 @@ func publish(ch *amqp091.Channel, body []byte) error {
 }
 
 func main() {
-	conn, err := amqp091.Dial("amqp://guest:guest@localhost:5672/")
+	rabbitMQ, err := messaging.NewRabbitMQ("amqp://guest:guest@localhost:5672/")
 	if err != nil {
-		log.Printf("couldn't open a new rabbitmq connection: %s", err)
+		log.Printf("couldn't open RabbitMQ connection: %s", err)
 	}
-	defer conn.Close()
-
-	ch, err := conn.Channel()
-	if err != nil {
-		log.Printf("couldn't open a unique channel: %s", err)
-	}
-	defer ch.Close()
+	defer rabbitMQ.Close()
 
 	r := http.NewServeMux()
-
 	r.HandleFunc("POST /upload", func(w http.ResponseWriter, r *http.Request) {
 		f, fh, err := r.FormFile("file")
 		if err != nil {
@@ -77,7 +71,7 @@ func main() {
 				http.Error(w, "Internal server error", http.StatusInternalServerError)
 			}
 
-			err = publish(ch, msg)
+			err = publish(rabbitMQ.Ch, msg)
 			if err != nil {
 				log.Printf("couldn't publish the chunk's message: %s", err)
 				http.Error(w, "couldn't read the file", http.StatusInternalServerError)
